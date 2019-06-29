@@ -1,0 +1,96 @@
+
+import cv2
+import numpy as np
+from numpy import array
+
+
+from os import listdir
+from os.path import isfile, join
+
+# from sklearn.cross_validation import train_test_split
+# from sklearn.preprocessing import StandardScaler
+
+#loadimages
+img=[]
+y=[]
+X=[]
+path ="MURA/XR_HAND/01 Fracture/"
+for case in listdir(path):
+    for study in listdir(path+case+'/'):
+        image = [f for f in listdir (path+case+ '/'+study+'/') if isfile (join (path+case+ '/'+study+'/', f))]
+        for i in image :
+            image_path = path+case+'/'+study+'/'+i
+#             print(image_path)
+            img = cv2.imread(image_path)
+            study_label = study
+            study_label = study_label.split('_')
+            y.append(study_label[1])
+#             print(study_label[1])
+#             cv2.imshow('image' ,img )
+            img = cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
+    
+    
+            #background Removal
+            #resizing img
+            img=cv2.resize(img,(400,550))
+            #remove noise
+            img_blur = cv2.GaussianBlur(img,(3,3),0)
+            #apply threshold
+            th, th3 = cv2.threshold(img, np.mean(img), 255, cv2.THRESH_BINARY)
+#             cv2.imshow("threshold",th3)
+            #difine the kernal we will compare to input image matrices
+            kernal = np.ones((5,5), np.uint8)
+            #Erosion .. add pixels ro the boundries of object if the kernal "fits"
+            erosion = cv2.erode(th3,kernal,iterations=2)
+#             cv2.imshow('erosion',erosion)
+            # Find Canny edges ..used to reduce the noise of the unneccesraly contours
+            edges = cv2.Canny(img,30,200)
+            # cv2.imshow('Canny edges',edges)
+            #Finding contours
+            edges, contours, hierarchy = cv2.findContours(erosion,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_NONE)
+
+            #Sort contours large to small
+            sorted_contours= sorted(contours,key=cv2.contourArea,reverse=True)
+            # cv2.drawContours(img, sorted_contours[0], -1, (255,255,255), 1, cv2.LINE_AA)
+            # cv2.imshow("Result", img)
+            #create the mask
+            mask = np.zeros(img.shape[:2], dtype="uint8") * 255
+            # Draw the contours on the mask and fill it with color
+            mask = cv2.fillPoly(mask, pts =[sorted_contours[0]], color=255) 
+#             cv2.imshow("mask",mask)
+            img = cv2.bitwise_and(img, img, mask=mask)
+#             cv2.imshow("object clear", img)
+            cv2.waitKey()
+    
+    
+            #feature extraction 
+            corners = cv2.goodFeaturesToTrack(img,25,0.01,10)
+            corners = np.int0(corners)
+            print("corners",corners)
+            #Slice and Reshape Arrays for Machine Learning Model
+            data = array(corners)
+            print("arr",data)
+            X=np.array(corners)
+            print("X",X,len(X))
+            
+
+            
+print("X",X,len(X[0]))
+print("Y",y,len(y))
+cv2.waitKey()
+cv2.destroyAllWindows()
+
+# split the data into a training set and a test set
+from sklearn.model_selection import train_test_split  
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size = 0.20)  
+# Create a classifier: a support vector classifier
+from sklearn.svm import SVC  
+svclassifier = SVC(kernel='rbf')  #Gaussian Kernel
+#fit to the trainin data
+svclassifier.fit(X_train, y_train)  
+# predict the value of test data
+y_pred = svclassifier.predict(X_test)  
+#confusion matrix
+from sklearn.metrics import classification_report, confusion_matrix  
+print(confusion_matrix(y_test, y_pred))  
+print(classification_report(y_test, y_pred))  
